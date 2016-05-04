@@ -39,6 +39,11 @@ class Ryuretic_coupler(coupler):
         self.cntrl ={'mac': 'ca:ca:ca:ab:ab:ab','ip':'10.0.0.40',
                      'port':None}
         self.badhost = {'mac':'00:00:00:00:00:02', 'ip':'10.0.0.2'}
+        self.net_tbl ={}
+        self.net_MacTbl = {}
+        self.net_PortTbl = {}
+        self.net_tbl['00:00:00:00:00:02'] = {'stat':'flagged'}
+        print self.net_tbl.keys()
         self.policyTbl = {}
         self.actionTbl = {}
         self.netView = {}
@@ -47,18 +52,24 @@ class Ryuretic_coupler(coupler):
         ICMP_ECHO_REPLY = 0
         ICMP_ECHO_REQUEST = 8
     
-    ##############         Proactive Rule Sets    #################
-    #[3] Insert proactive rules defined below. Follow format below
-    #    Options include drop or redirect, fwd is the default. 
+    ##############         Proactive Rule Sets    #######################
+    #[3] Insert proactive rules defined below. Follow format below      #
+    #    Options include drop or redirect, fwd is the default.          #
     def get_proactive_rules(self, dp, parser, ofproto):
         # return None, None
         fields, ops = self.honeypot(dp, parser, ofproto)
         return fields, ops
 
-    ################       Reactive Rule Sets     #################
-    #[4] use below handles to direct packets to reactive user modules 
-    #    defined in location #[5]. If no rule is added, then
-    #    the default self.default_Fields_Ops(pkt) must be used  
+    ################       Reactive Rule Sets     #######################
+    #[4] use below handles to direct packets to reactive user modules   #
+    #    defined in location #[5]. If no rule is added, then            #
+    #    the default self.default_Fields_Ops(pkt) must be used          #
+    #####################################################################
+    #Determine highest priority fields and ops pair, if needed
+    #xfields = [fields0, fields1, fields2]
+    #xops = [ops0, ops1, ops2]
+    #fields,ops = self._build_FldOps(xfields,xops)
+    ##############################################################    
     def handle_eth(self,pkt):
         print "handle eth"
         fields, ops = self.default_Field_Ops(pkt)
@@ -67,27 +78,47 @@ class Ryuretic_coupler(coupler):
     def handle_arp(self,pkt):
         print "\n******handle ARP******\n"
         #fields, ops = self.respond_to_arp(pkt)
-        fields, ops = self.detectSpoof(pkt)
+        print "ARP Proto is ", pkt['proto']
+        pkt_status = self.check_net_tbl(pkt['srcmac'], pkt['inport'])
+        print "***\n Packet status is : ", pkt_status, "\n*******"
+        if pkt_status is 'flagged':
+            print "Poisoning host"
+            fields,ops = self.Arp_Poison(pkt)
+        else:
+            print "***\nNot Flagged\n***"
+            #fields,ops = self.detectSpoof(pkt)
+            spoofed = self.detectSpoof(pkt)
+            if spoofed == 'flagged':
+                print "Spoofed Pkt"
+                self.notify_TA(pkt)
+                fields, ops = self.drop_ARP(pkt)
+            else:
+                fields, ops = self.respond_to_arp(pkt)
+                
+        self.install_field_ops(pkt,fields,ops)        
+            
         #fields, ops = self.default_Field_Ops(pkt)
         print"Installing Field OPs"
+        print "Fields: ", fields, '\n'
+        print "OPS: ", ops, '\n'
         self.install_field_ops(pkt, fields, ops)
 		
     def handle_ip(self,pkt):
         print "handle ip"
 	#fields, ops = self.default_Field_Ops(pkt)
-        fields, ops = self.Stateful_FW(pkt)
-	##############################################################
-        #Determine highest priority fields and ops pair, if needed
-        #xfields = [fields0, fields1, fields2]
-        #xops = [ops0, ops1, ops2]
-        #fields,ops = self._build_FldOps(xfields,xops)
-	##############################################################
-        
+        fields, ops = self.Stateful_FW(pkt) 
         self.install_field_ops(pkt,fields,ops)
 
     def handle_icmp(self,pkt):
         print "\n**********handle icmp********\n"
-        fields, ops = self.respond_to_ping(pkt)
+        pkt_status = self.check_net_tbl(pkt['srcmac'], pkt['inport'])
+        print "Packet status is: ", pkt_status
+        if pkt_status is 'flagged':
+            print "*\n*\nRedirecting Packet to Trusted Agent"
+            fields,ops = self.Icmp_Redirect(pkt)
+        else:
+            print "*******\nrespond to ping"
+            fields, ops = self.respond_to_ping(pkt)
         #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)
 
@@ -140,34 +171,47 @@ class Ryuretic_coupler(coupler):
         return fields, ops
 
 
-    #############  Ryuretic Network Application Modules    ##########
-    #[5] Add user created methods below. Examples are provided to assist
-    # the user with basic python, dictionary, list, and function calls
+    #############  Ryuretic Network Application Modules    ##################   
+    #[5] Add user created methods below. Examples are provided to assist    #
+    # the user with basic python, dictionary, list, and function calls      #
 
+    # Confirm mac has been seen before and no issues are recorded
+    def check_net_tbl(self,mac,port):
+        if mac in self.net_MacTbl.keys():
+            print mac, " found in table."         
+            return self.net_MacTbl[mac]['stat']
+        elif port in self.net_PortTbl.keys():
+            print "Port ", port, " found in table."
+            return self.net_PortTable[port]['stat']
+        else:
+            return None
+
+    #Check to ensure ARPs are not to Cntrl
     def respond_to_arp(self,pkt):
         #print 'Respond to Arp Called'
         fields, ops = self.default_Field_Ops(pkt)
         if pkt['dstip'] == self.cntrl['ip']:
             print "Message to Controller"
+            fields['keys']=['srcmac', 'srcip', 'ethtype', 'inport']
+            fields['ptype'] = 'arp'
             fields['dstip'] = pkt['srcip']
             fields['srcip'] = self.cntrl['ip']
             fields['dstmac'] = pkt['srcmac']
             fields['srcmac'] = self.cntrl['mac']
-            fields['ptype'] = 'arp'
             fields['ethtype'] = 0x0806
             ops['op'] = 'craft'
             ops['newport'] = pkt['inport']
             #print "INPORT: ", pkt['inport']
         return fields, ops
             
-
+    #Respond to ping. Forward or respond if to cntrl from trusted agent. 
     def respond_to_ping(self,pkt):
         fields, ops = self.default_Field_Ops(pkt)
         #print "\n\nRespond to Ping"
         if pkt['dstip'] == self.cntrl['ip']:
             if pkt['srcip'] == '10.0.0.1':
-                  self.t_agent = {'srcip':pkt['srcip'],'srcmac':pkt['srcmac'],
-                                  'inport':pkt['inport'],'msg':pkt['msg'],
+                  self.t_agent = {'ip':pkt['srcip'],'mac':pkt['srcmac'],
+                                  'port':pkt['inport'],'msg':pkt['msg'],
                                   'ofproto':pkt['ofproto'], 'dp':pkt['dp']}
                                   
             #print'respond to ping'
@@ -185,37 +229,78 @@ class Ryuretic_coupler(coupler):
             ops['newport'] = pkt['inport']
 
         return fields, ops
-        
 
-    def sendICMP_msg(self,pkt):
-        print'Sending ICMP message'
-        rcvData = pkt['data'].data
-        #print type(rcvData)
-        fields['dstip'] = pkt['srcip']
-        fields['srcip'] = self.cntrl['ip']
-        fields['dstmac'] = pkt['srcmac']
-        fields['srcmac'] = self.cntrl['mac']
+    #Redirect ICMP packets to trusted agent
+    def Icmp_Redirect(self,pkt):
+        print "Redirecting ICMP"
+        fields, ops = self.default_Field_Ops(pkt)
+        fields['keys'] = ['inport', 'ethtype']
+        fields['dstmac'] = self.t_agent['mac']
+        fields['dstip'] = self.t_agent['ip']
+        ops['op'] = 'redir'
+        ops['newport'] = self.t_agent['port']
+        ops['priority'] = 1000
+        ops['idle_t'] = 180
+        ops['hard_t'] = 180
         
-        fields['ptype'] = 'icmp'
-        fields['ethtype'] = 0x0800
-        fields['proto'] = 1
-        fields['com'] = fields['srcmac']+','+str(fields['inport'])+',passkey,violation'
-        ops['op'] = 'craft'
-        ops['newport'] = pkt['inport']
 
         return fields, ops
 
+    def detectSpoof(self,pkt):
+        print "Detecting Spoof"
+        policyFlag = False
+        if self.netView.has_key(pkt['inport']):
+            print "Port in Netview"
+            if pkt['srcmac']!= self.netView[pkt['inport']]['srcmac']:
+                print "Spoofed IP detected"
+                policyFlag = True
+            if pkt['srcip'] != self.netView[pkt['inport']]['srcip']:
+                print "Spoofed IP detected"
+                policyFlag = True
+        else:
+            print "***\nAdding MAC and IP to Port ", pkt['inport'],"\n***"
+            self.netView[pkt['inport']] = {'srcmac': pkt['srcmac'],
+                                           'srcip': pkt['srcip']}
+            print self.netView[pkt['inport']]
+
+        if policyFlag == True:
+            self.net_MacTbl[pkt['srcmac']] = {'stat':'flagged'}
+            self.net_PortTbl[pkt['inport']] = {'stat': 'flagged'}
+                            
+        return policyFlag
+
+    #Builds notification information for trusted agent and sends if via
+    # self.update_TA (may want to combine these two definitions
+    def notify_TA(self, pkt):
+        keyID = self.keyID
+        self.keyID += 1
+        print "Adding Violation, passkey, and updating keyID"
+        violation = 's'
+        #create passkey
+        passkey =''.join(random.choice(string.ascii_letters) for x in range(8))
+        #update policy table
+        self.policyTbl[keyID]={'inport':pkt['inport'],
+                                    'srcmac':pkt['srcmac'],
+                                    'passkey':passkey,
+                                    'violation':violation}
+        #Notify trusted agent of newly flagged client
+        self.update_TA(pkt,passkey, violation)
+
+        return keyID
+
+
+    #Crafts tailored ICMP message for trusted agent
     def update_TA(self,pkt,passkey,violation):
         #print "Updating Trusted Agent"
         fields, ops = {},{}
         fields['keys'] = ['inport', 'srcip']
-        fields['dstip'] = self.t_agent['srcip']
+        fields['dstip'] = self.t_agent['ip']
         fields['srcip'] = self.cntrl['ip']
-        fields['dstmac'] = self.t_agent['srcmac']
+        fields['dstmac'] = self.t_agent['mac']
         fields['srcmac'] = self.cntrl['mac']
         fields['dp'] = self.t_agent['dp']
         fields['msg'] = self.t_agent['msg']
-        fields['inport'] = self.t_agent['inport']
+        fields['inport'] = self.t_agent['port']
         fields['ofproto']=self.t_agent['ofproto']
         fields['ptype'] = 'icmp'
         fields['ethtype'] = 0x0800
@@ -226,14 +311,28 @@ class Ryuretic_coupler(coupler):
         ops = {'hard_t':None, 'idle_t':None, 'priority':0, \
                    'op':'fwd', 'newport':None}
         ops['op'] = 'craft'
-        ops['newport'] = self.t_agent['inport']
+        ops['newport'] = self.t_agent['port']
         
         self.install_field_ops(pkt, fields, ops)
-
         
+    #Use in conjunction with detect spoof to drop ARP Replies from flagged host
+    #Only allow acces to Trusted Agent
+    def drop_ARP(self, pkt):
+        if pkt['dstip'] != self.t_agent['ip']:
+            fields, ops = self.default_Field_Ops(pkt)
+            fields['keys'] = ['inport', 'ethtype', 'proto']
+            fields['inport'] = pkt['inport']
+            fields['ethtype'] = pkt['ethtype']
+            fields['proto'] = pkt['proto']
+            ops['priority'] = 100
+            ops['op']='drop'
+            ops['idle_t'] = 120
+            print "(319) Droping ARP. Fields are: ", fields
+        return fields, ops
+                            
     # trying to forward to respond_to_ARP to consolidate code
-    def detectSpoof(self,pkt):
-        #print "Detect Spoof calls Respond to ARP\n"
+    def detectSpoof2(self,pkt):
+        print "Detect Spoof calls Respond to ARP\n"
         policyFlag = False
         fields, ops = self.respond_to_arp(pkt)
         # Check network view to see if ip matches flowgraph
@@ -245,8 +344,10 @@ class Ryuretic_coupler(coupler):
                 print "Spoofed IP detected"
                 policyFlag = True
         else:
+            print "***\nAdding MAC\n***"
             self.netView[pkt['inport']] = {'srcmac': pkt['srcmac'],
                                            'srcip': pkt['srcip']}
+            print self.netView[pkt['inport']]
 
         if policyFlag == True:
             keyID = self.keyID
@@ -263,11 +364,11 @@ class Ryuretic_coupler(coupler):
             #Notify trusted agent of newly flagged client
             self.update_TA(pkt,passkey, violation)
             #Update action table to handle future client packets
-            fields['keys'] = ['inport']
-            ops['dstmac'] = self.t_agent['srcmac']
-            ops['dstip'] = self.t_agent['srcip']
+            fields['keys'] = ['inport', 'ethtype']
+            fields['dstmac'] = self.t_agent['mac']
+            fields['dstip'] = self.t_agent['ip']
             ops['op'] = 'redir'
-            ops['newport'] = self.t_agent['inport']
+            ops['newport'] = self.t_agent['port']
             ops['priority'] = 1000
             ops['idle_t'] = 180
             ops['hard_t'] = 180
@@ -278,18 +379,22 @@ class Ryuretic_coupler(coupler):
                                              'ops':ops}
         return fields, ops
 
-    def Arp_Poison(self,pkt):
+    def Arp_Poison(self,pkt,fields={}):
+        print "Building Arp poison"
+        fields, ops = self.default_Field_Ops(pkt)
+        if pkt['opcode'] != 2: 
+            fields['keys']=['srcmac', 'srcip', 'ethtype', 'inport']
+            fields['ptype'] = 'arp'
+            fields['ethtype'] = 0x0806 #pkt['ethtype']
+            print "Ethernet Type is : ", pkt['ethtype'], type(pkt['ethtype'])
+            fields['srcmac'] = self.t_agent['mac']
+            fields['dstmac'] = pkt['srcmac']
+            fields['srcip'] = pkt['dstip'] #self.t_agent['ip']
+            fields['dstip'] = pkt['srcip']
+            ops = {'hard_t':None, 'idle_t':None, 'priority':100, \
+                       'op':'craft', 'newport':pkt['inport']}
 
-        fields['ptype'] = 'arp'
-        fields['srcmac'] = self.t_agent['srcmac']
-        fields['dstmac'] = pkt['srcmac']
-        fields['srcip'] = self.t_agent['srcip']
-        fields['dstip'] = pkt['srcip']
-
-        ops = {'hard_t':None, 'idle_t':None, 'priority':0, \
-                   'op':'craft', 'newport':None}
-
-        self.install_field_ops(pkt, fields, ops)
+        return fields,ops
          
             
     def Simple_FW(self,pkt):
@@ -345,7 +450,7 @@ class Ryuretic_coupler(coupler):
         # This should install proactive rules that mirrors data from a 
         # honeypot system
         fields, ops = {}, {}
-        fields['eth_type'] = 0x0800
+        fields['ethtype'] = 0x0800
         fields['keys'] = ['srcip']
         fields['srcip'] = '10.0.0.42'
         ops['priority'] = 100
@@ -354,3 +459,24 @@ class Ryuretic_coupler(coupler):
         #could make this multicast as well [1,2,3]
 
         return fields, ops
+
+
+
+##   #Send host violation information to Trusted Agent
+##    def sendICMP_msg(self,pkt):
+##        print'Sending ICMP message'
+##        rcvData = pkt['data'].data
+##        #print type(rcvData)
+##        fields['dstip'] = pkt['srcip']
+##        fields['srcip'] = self.cntrl['ip']
+##        fields['dstmac'] = pkt['srcmac']
+##        fields['srcmac'] = self.cntrl['mac']
+##        
+##        fields['ptype'] = 'icmp'
+##        fields['ethtype'] = 0x0800
+##        fields['proto'] = 1
+##        fields['com'] = fields['srcmac']+','+str(fields['inport'])+',passkey,violation'
+##        ops['op'] = 'craft'
+##        ops['newport'] = pkt['inport']
+##
+##        return fields, ops

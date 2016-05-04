@@ -113,11 +113,12 @@ class RevocationTopo(Topo):
 
 if __name__ == '__main__':
     info('*** Starting Mininet *** \n')
-    print '*** Starting Mininet *** \n"
+    print '*** Starting Mininet *** \n'
     topo = RevocationTopo()
     net = Mininet(topo=topo, link=TCLink, controller=RemoteController)
     info('*** Topology Created *** \n')
-    print "Toplology Created"
+    print "***Toplology Created***"
+    
     net.start()
     run("ovs-vsctl set bridge s1 protocols=OpenFlow13")
     

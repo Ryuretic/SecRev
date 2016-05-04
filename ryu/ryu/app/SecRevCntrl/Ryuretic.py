@@ -28,8 +28,8 @@
 import logging
 import struct
 # Ryuretic framework files
-from ryu.app.Pkt_Parse13 import Pkt_Parse
-from ryu.app.switch_mod13 import SimpleSwitch
+from Pkt_Parse13 import Pkt_Parse
+from switch_mod13 import SimpleSwitch
 # Standard RYU calls
 from ryu.base import app_manager
 from ryu.controller import mac_to_port
@@ -143,8 +143,8 @@ class coupler(app_manager.RyuApp):
         fields_keys = fields['keys']
         if 'inport' in fields_keys:
             match_vals['in_port'] = fields['inport']
-        if 'eth_type' in fields_keys:
-            match_vals['eth_type'] = fields['eth_type']
+        if 'ethtype' in fields_keys:
+            match_vals['eth_type'] = fields['ethtype']
         if 'srcmac' in fields_keys:
             match_vals['eth_src'] = fields['srcmac']
         if 'dstmac' in fields_keys:
@@ -168,7 +168,7 @@ class coupler(app_manager.RyuApp):
         if ops['op'] == 'drop':
             out_port = ofproto.OFPPC_NO_RECV
             actions.append(parser.OFPActionOutput(out_port))
-        if ops == 'redir':
+        if ops['op'] == 'redir':
             out_port = ops['newport']
             actions.append(parser.OFPActionOutput(out_port))
 
@@ -228,6 +228,7 @@ class coupler(app_manager.RyuApp):
     def install_field_ops(self, pkt, fields, ops):
         #Build match from pkt and fields
         match = self.pkt_match(fields)
+        print "Match Fields are:   ", match
 		#Build actions from pkt and ops
         out_port, actions = self.pkt_action(pkt,ops,fields)
         priority = ops['priority']
@@ -254,7 +255,7 @@ class coupler(app_manager.RyuApp):
                                   in_port=fields['inport'],
                                   actions=actions, data=data)
 
-        print "line 255 out: ", out
+        #print "line 255 out: ", out
         fields['dp'].send_msg(out)
 
     #############################################################
@@ -267,8 +268,8 @@ class coupler(app_manager.RyuApp):
             fields_keys = fields['keys']
             if 'inport' in fields_keys:
                 match_vals['in_port'] = fields['inport']
-            if 'eth_type' in fields_keys:
-                match_vals['eth_type'] = fields['eth_type']
+            if 'ethtype' in fields_keys:
+                match_vals['eth_type'] = fields['ethtype']
             if 'srcmac' in fields_keys:
                 match_vals['eth_src'] = fields['srcmac']
             if 'dstmac' in fields_keys:
@@ -310,20 +311,20 @@ class coupler(app_manager.RyuApp):
             actions.append(parser.OFPActionOutput(out_port))
         elif ops['op'] == 'redir':
             out_port = ops['newport']
-            print "line 312: dstmac: ", ops['dstmac']
-            print "line 313: dstip: ", ops['dstip']
+            print "line 312: dstmac: ", fields['dstmac']
+            print "line 313: dstip: ", fields['dstip']
             print pkt['dstip']
+            if pkt['ip'] is not None:
+                actions.append(parser.OFPActionSetField(eth_dst=fields['dstmac']))
+                actions.append(parser.OFPActionSetField(ipv4_dst=fields['dstip']))
             actions.append(parser.OFPActionOutput(out_port))
-            #actions.append(parser.OFPActionSetField(eth_dst=ops['dstmac']))
-            #actions.append(parser.OFPActionSetField(ipv4_dst=ops['dstip']))
-            #actions.append(parser.OFPActionSetField(dst_ip=ops['dstip']))
-            
         elif ops['op'] == 'mir':
             out_port = self.switch.handle_pkt(pkt)
             actions.append(parser.OFPActionOutput(out_port))
             mir_port = ops['newport']
             actions.append(parser.OFPActionOutput(mir_port))
         elif ops['op'] == 'craft':
+            print "***\nCrafting Packet\n***"
             #create and send new pkt due to craft trigger
             self._build_pkt(fields, ops) 
             #Now drop the arrived packet
