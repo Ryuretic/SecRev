@@ -209,7 +209,7 @@ class coupler(app_manager.RyuApp):
         mod = parser.OFPFlowMod(datapath=dp,
                             priority=ops['priority'],
                             idle_timeout=ops['idle_t'],
-                            hard_timeout=ops['hard_t'],
+                            hard_timeout=60,
                             match=match, instructions=inst)
         print "line 218. Mod send to switch: \n", mod
         dp.send_msg(mod)
@@ -237,7 +237,7 @@ class coupler(app_manager.RyuApp):
         
         # install temporary flow to avoid future packet_in. 
         # idle_t and hard_t must be set to something. 
-##        if ops['idle_t'] or ops['hard_t']:
+##        if ops['idle_t']: # or ops['hard_t']:
 ##            if out_port != ofproto.OFPP_FLOOD:
 ##                print "Line 244: ", actions
 ##                self.add_timeFlow(fields['dp'], ops, match, actions)
@@ -302,6 +302,7 @@ class coupler(app_manager.RyuApp):
     def pkt_action(self,pkt,ops,fields):
         print"********************\npacket action\n*****************"
         actions = []
+        print "line 305. Ops: ", ops
         parser = fields['dp'].ofproto_parser
         if ops['op'] == 'fwd':
             out_port = self.switch.handle_pkt(pkt)
@@ -343,8 +344,18 @@ class coupler(app_manager.RyuApp):
 
         def addIPv4(pkt_out, fields):
             pkt_out.add_protocol(ipv4.ipv4(dst=fields['dstip'],
+                                 version = 4,
+                                 total_length = 0,
                                  src=fields['srcip'],
                                  proto=fields['proto']))
+            return pkt_out
+
+        def addARP(pkt_out,fields):
+            pkt_out.add_protocol(arp.arp(opcode=arp.ARP_REPLY,
+                                 src_mac=fields['srcmac'],
+                                 src_ip=fields['srcip'],
+                                 dst_mac=fields['dstmac'],
+                                 dst_ip=fields['dstip']))
             return pkt_out
 
         pkt_out.add_protocol(ethernet.ethernet(ethertype=fields['ethtype'],
@@ -371,10 +382,15 @@ class coupler(app_manager.RyuApp):
                                  data=None))
         # Add if UDP    
         if 'udp' in fields['ptype']:
+            #pkt_out = addARP(pkt_out,fields)
             pkt_out = addIPv4(pkt_out,fields)
             pkt_out.add_protocol(udp.udp(dst_port=fields['dstport'],
-				bits=fields['bits'],option=fields['opt'],
+                                csum = 0,
+                                total_length = 0,
                                 src_port=fields['srcport']))
+            #	bits=fields['bits'],option=fields['opt'],
+##                                            
+##                                
         # Add if TCP                         	 
         if 'tcp' in fields['ptype']:
             pkt_out = addIPv4(pkt_out,fields)
@@ -385,7 +401,9 @@ class coupler(app_manager.RyuApp):
         if fields['com'] != None:
             pkt_out.add_protocol(fields['com'])
             
-        #Send crafted packet            
+        #Send crafted packet
+        print "Packet out: \n"
+        print pkt_out
         self._send_packet(fields['dp'], ops['newport'], pkt_out)
 	
     #Receive crafted packet and send it to the switch

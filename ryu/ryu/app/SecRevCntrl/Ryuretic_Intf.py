@@ -123,16 +123,30 @@ class Ryuretic_coupler(coupler):
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
-        print "handle tcp"
+        print "\n***handle tcp***\n"
+        pkt_status = self.check_net_tbl(pkt['srcmac'], pkt['inport'])
+        print "Packet status is: ", pkt_status
+        if pkt_status is 'flagged':
+            print "*\n*\nRedirecting Packet to Trusted Agent"
+            fields,ops = self.default_Field_Ops(pkt) #self.Tcp_Redirect(pkt)
+        else:
+            print "*\n******\Fwd to TCP"
+            fields, ops = self.default_Field_Ops(pkt)
         #fields, ops = self.default_Field_Ops(pkt)
-        fields,ops = self.Simple_FW(pkt)
-        #fields, ops = self.TTL_Check(pkt)
-        # users can also call modules with no return
-        self.install_field_ops(pkt, fields, ops)
+        self.install_field_ops(pkt, fields, ops)        
+
 
     def handle_udp(self,pkt):
-        print "handle udp"
-        fields, ops = self.default_Field_Ops(pkt)
+        print "*\n*\nhandle udp\nhandl udp\nhandle udp"
+        print pkt
+        #handle dns here
+        pkt_status = self.check_net_tbl(pkt['srcmac'], pkt['inport'])
+        print "Packet status is: ", pkt_status
+        if pkt_status is 'flagged':
+            print "Responding to DNS"
+            fields, ops = self.respond_to_dns(pkt)
+        else:
+            fields, ops = self.default_Field_Ops(pkt)
         #fields, ops = self.TTL_Check(pkt)
         self.install_field_ops(pkt, fields, ops)
 
@@ -230,6 +244,30 @@ class Ryuretic_coupler(coupler):
 
         return fields, ops
 
+    def respond_to_dns(self, pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        if pkt['dstport'] == 53:
+            print "Message from Controller"
+            fields['keys']=['srcmac', 'srcip', 'ethtype', 'inport']
+            fields['ptype'] = 'udp'
+            fields['dstip'] = pkt['srcip']
+            fields['dstmac'] = pkt['srcmac']           
+            fields['srcip'] = pkt['dstip']
+            fields['srcmac'] = self.t_agent['mac']
+            fields['dstport']= pkt['srcport']
+            fields['opt'] = pkt['opt']
+            fields['proto'] = pkt['proto']
+            #fields['bits'] = pkt['bits']
+            fields['srcport'] = 53
+            fields['ethtype'] = pkt['ethtype']
+            fields['csum'] = pkt['csum']
+            fields['t_length'] = pkt['t_length']
+            ops['op'] = 'craft'
+            ops['newport'] = pkt['inport']
+            #print "INPORT: ", pkt['inport']
+        return fields, ops
+
+        
     #Redirect ICMP packets to trusted agent
     def Icmp_Redirect(self,pkt):
         print "Redirecting ICMP"
@@ -237,13 +275,27 @@ class Ryuretic_coupler(coupler):
         fields['keys'] = ['inport', 'ethtype']
         fields['dstmac'] = self.t_agent['mac']
         fields['dstip'] = self.t_agent['ip']
+        fields['ethtype'] = pkt['ethtype']
         ops['op'] = 'redir'
         ops['newport'] = self.t_agent['port']
-        ops['priority'] = 1000
+        ops['priority'] = 100
         ops['idle_t'] = 180
-        ops['hard_t'] = 180
-        
+        #ops['hard_t'] = 180
+        return fields, ops
 
+    def Tcp_Redirect(self,pkt):
+        print "*\n*\nRedirecting TCP"
+        print pkt
+        fields, ops = self.default_Field_Ops(pkt)
+        fields['keys'] = ['inport', 'ethtype']
+        fields['dstmac'] = self.t_agent['mac']
+        fields['dstip'] = self.t_agent['ip']
+        fields['ethtype'] = pkt['ethtype']
+        ops['op'] = 'redir'
+        ops['newport'] = self.t_agent['port']
+        ops['priority'] = 100
+        ops['idle_t'] = 180
+        #ops['hard_t'] = 180
         return fields, ops
 
     def detectSpoof(self,pkt):
@@ -371,7 +423,7 @@ class Ryuretic_coupler(coupler):
             ops['newport'] = self.t_agent['port']
             ops['priority'] = 1000
             ops['idle_t'] = 180
-            ops['hard_t'] = 180
+            #ops['hard_t'] = 180
             
             #print "Updating Action Table\n"
             self.actionTbl[pkt['srcmac']] = {'keyID':self.keyID,
@@ -442,7 +494,7 @@ class Ryuretic_coupler(coupler):
                     fields['dstip'] = pkt['dstip']
                     ops['priority'] = 100
                     ops['op']='drop'
-                    ops['hard_t'] = 20
+                    #ops['hard_t'] = 20
                     ops['idle_t'] = 4
                     return fields, ops
 
@@ -480,3 +532,9 @@ class Ryuretic_coupler(coupler):
 ##        ops['newport'] = pkt['inport']
 ##
 ##        return fields, ops
+## TCP Options
+##        #fields, ops = self.default_Field_Ops(pkt)
+##        fields,ops = self.Simple_FW(pkt)
+##        #fields, ops = self.TTL_Check(pkt)
+##        # users can also call modules with no return
+##        self.install_field_ops(pkt, fields, ops)
