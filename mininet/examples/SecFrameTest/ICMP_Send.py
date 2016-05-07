@@ -84,11 +84,14 @@ def ping(hostIP,com):
     sendICMP(hostIP, com)
 
 while(1):
-    choice = raw_input("Enter 1 to send value: ")
-    print choice
-    if int(choice) == 1:
-        hostIP = '10.0.0.40'
-        ping(hostIP, 'v,3')
+    choice = raw_input("Enter:\n 1) to initialize \n 2) to send revocation \n ")
+    print "You entered: ", choice
+    cntrlIP = '10.0.0.40'
+    if int(choice) == 1: 
+        ping(cntrlIP, 'i,0')
+    elif int(choice) == 2:
+        keyID = raw_input("Enter key ID:  ")
+        ping(cntrlIP,'d,'+keyID)
     else:
         "Try again"
 

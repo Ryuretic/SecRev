@@ -85,11 +85,12 @@ def main():
     choice = raw_input('1) Start Web Server or 2) Stop \n')   
 
     if choice == '1':
-        interface, attackIP = getVectors()
-        renderWeb(interface, attackIP)
+        interface, serverIP = getVectors()
+        renderWeb(interface, serverIP)
     elif choice == '2':
-        attackIP = '10.0.0.1' #raw_input("Enter your IP")
-        endWebpageAttack(attackIP)
+        serverIP = '10.0.0.1' #raw_input("Enter your IP")
+        killWebServer(serverIP)
+        print "don't forget netstat -tulp  and kill process"
     else:
         print "wrong value"
      

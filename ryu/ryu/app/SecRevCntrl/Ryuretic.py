@@ -314,7 +314,8 @@ class coupler(app_manager.RyuApp):
             out_port = ops['newport']
             print "line 312: dstmac: ", fields['dstmac']
             print "line 313: dstip: ", fields['dstip']
-            print pkt['dstip']
+            #print pkt['dstip']
+            #This may no longer be necessary
             if pkt['ip'] is not None:
                 actions.append(parser.OFPActionSetField(eth_dst=fields['dstmac']))
                 actions.append(parser.OFPActionSetField(ipv4_dst=fields['dstip']))
@@ -344,10 +345,17 @@ class coupler(app_manager.RyuApp):
 
         def addIPv4(pkt_out, fields):
             pkt_out.add_protocol(ipv4.ipv4(dst=fields['dstip'],
-                                 version = 4,
-                                 total_length = 0,
-                                 src=fields['srcip'],
-                                 proto=fields['proto']))
+                                version = 4,
+                                header_length = 5,
+                                tos = 0,
+                                total_length = 0,
+                                identification = fields['id'],
+                                flags=0x02,
+                                ttl = 63,
+                                proto = fields['proto'],
+                                csum = 0,
+                                option = None,
+                                src=fields['srcip']))
             return pkt_out
 
         def addARP(pkt_out,fields):
