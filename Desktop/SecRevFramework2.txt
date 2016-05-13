@@ -1,0 +1,146 @@
+After running SDN Hub Tutorial as SecRevFramework: 
+
+Install: gedit, idle, lighttpd, sslstrip, nmap, python_scapy, netifaces, php5-cgi
+Install: netifaces (sudo pip install netifaces)
+
+sudo lighty-enable-mod fastcgi 
+sudo lighty-enable-mod fastcgi-php
+sudo service lighttpd force-reload (failed--don't know why
+
+
+Quickstart
+sudo idle Desktop/StartFiles.py &
+
+
+Controller Files
+# !/ryu/ryu/app/SecRevCntrl/Pkt_Parse13.py
+# !/ryu/ryu/app/SecRevCntrl/switch_mod13.py
+# !/ryu/ryu/app/SecRevCntrl/Ryuretic.py   
+# !/ryu/ryu/app/SecRevCntrl/Ryuretic_Intf.py 
+Enter (main term 1)
+PYTHONPATH=. ./bin/ryu-manager ryu/app/SecRevCntrl/Ryuretic_Intf.py
+
+Mininet Files
+# !/mininet/examples/SecFrameTest/Security_Rev_TestBed.py (main term2)
+# !/mininet/examples/SecFrameTest/ICMP_Send.py  (xterm h1)
+# !/mininet/examples/SecFrameTest/ICMP_Listener.py (xterm h1)
+# !/mininet/examples/SecFrameTest/ARP_Poison.py  (xterm h2)
+# !/mininet/examples/SecFrameTest/webServer.py (xterm h1)
+Enter 
+sudo python mininet/examples/SecFrameTest/Security_Rev_TestBed.py
+
+Web
+# !/etc/lighttpd/
+# !/var/www/index.php
+#!/var/www/process_data.py
+
+# /etc/init.d/lighttpd start
+# /etc/init.d/lighttpd stop
+# sudo chmod 705 process_data.cgi
+# service lighttpd restart
+# /etc/init.d/lighttpd force-reload
+
+# netstat -ntulp
+# kill "processID"
+
+Enter 
+sudo python /mininet/examples/SecFrameTest/Security_Rev_TestBed.py
+
+Gedit help
+https://www.howtoforge.com/tutorial/install-git-and-github-on-ubuntu-14.04/#-pushing-files-in-local-repository-to-github-repository
+
+
+git add mininet/examples/SecFrameTest/Security_Rev_TestBed.py 
+git commit -m "Adding Test Files"
+git pull origin master
+git push origin master
+
+
+
+
+echo "#Security Revocation Framework" >> README.md
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   mininet/examples/SecFrameTest/Security_Rev_TestBed.py
+	modified:   ryu/ryu/app/SecRevCntrl/Ryuretic.py
+	modified:   ryu/ryu/app/SecRevCntrl/Ryuretic_Intf.py
+
+
+
+Starting lighttpd: 
+files: /etc/lighttpd/lighttpd.conf and /var/www/html/index.html
+# /etc/init.d/lighttpd start
+# /etc/init.d/lighttpd stop
+# /etc/init.d/lighttpd force-reload
+
+# netstat -ntulp
+# kill "processID"
+
+
+
+Issues: 
+
+1)  Serialization issues often occur if a required field is set to none. 
+Displayed on terminal: 
+	File "/home/ubuntu/ryu/ryu/app/SecRevCntrl/Ryuretic.py", line 398, in _send_packet
+    		pkt_out.serialize()
+  	File "/home/ubuntu/ryu/ryu/lib/packet/packet.py", line 73, in serialize
+    		data = p.serialize(self.data, prev)
+  	File "/home/ubuntu/ryu/ryu/lib/packet/ethernet.py", line 67, in serialize
+
+Problem: fields['ethtype'] was set to None
+
+2)Serialization issue: 
+Terminal Displayed: 
+	  File "/home/ubuntu/ryu/ryu/controller/controller.py", line 214, in send_msg
+	    msg.serialize()
+	  File "/home/ubuntu/ryu/ryu/ofproto/ofproto_parser.py", line 203, in serialize
+	    self._serialize_body()
+	  File "/home/ubuntu/ryu/ryu/ofproto/ofproto_v1_3_parser.py", line 2374, in _serialize_body
+	    a.serialize(self.buf, offset)
+	  File "/home/ubuntu/ryu/ryu/ofproto/ofproto_v1_3_parser.py", line 2743, in serialize
+	    offset, self.type, self.len, self.port, self.max_len)
+	  File "/home/ubuntu/ryu/ryu/ofproto/ofproto_parser.py", line 220, in msg_pack_into
+	    buf += struct.pack(fmt, *args)
+	error: cannot convert argument to integer
+
+Solution: Problem: 
+	fields['ethtype'] set to 2054 instead of 0x0806
+	For Craft packets, require a newport vlaue. 
+
+
+3) Common Error to crafting packet: error: cannot convert argument to integer
+Make sure all fields are filled
+
+4) TypeError: 'NoneType' object is not iterable
+Make sure you are returning fields and ops to your calling method.
+
+
+
+Other possible references: 
+
+https://blog.heckel.xyz/2013/07/18/how-to-dns-spoofing-with-a-simple-dns-server-using-dnsmasq/
+
+
+5) Getting CGI to work is painful.
+
+6) Need to upload the update lighttpd.conf file for enabling php and cgi.
+
+
+
+
+
+
+
+
+
+
+Fixes: 
+Ryuretic.py 
+1) line 228, 233: Look to remove pkt. May not need to send the entire thing. 
+2) line 319: Replace pkt['ip'] with fields['ip'] 
+
+
