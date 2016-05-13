@@ -22,12 +22,13 @@ import struct
 import binascii
 import sys, os
 ##from struct import *
+from ClientTable_Handler import ClientTable_Handler
 
 
 def listen():
     s = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
     s.setsockopt(socket.SOL_IP, socket.IP_HDRINCL, 1)
-    ClientTable = 'mininet/examples/SecFrameTest/ClientTable.txt'
+    ClientTable = '/var/www/cgi-bin/ClientTable.txt'
     while 1:
         data, addr = s.recvfrom(1508)
         #print s.recvfrom(1508)
@@ -38,15 +39,22 @@ def listen():
             #print "Lenth of Received Data: ", len(data)
             if len(data) > 4:
                 print "Updating Table"
-                client_tbl = open(ClientTable,'a')
-                client_tbl.write(rcvData+'\n')
-                print data
-                mac, port, passKey, violation, keyID = data
-                client_tbl.close()
+                print rcvData
+                c_handle = ClientTable_Handler()
+                c_handle.add_entry(rcvData)
+                #client_tbl = open(ClientTable,'a')
+                #client_tbl.write(rcvData+'\n')
+                #print data
+                #mac, port, passKey, violation, keyID = data
+                #client_tbl.close()
             else:
                 print "\nValues: ", data
                 if data[1] == 'd':
-                    print "removing data from table"
+                    keyID = data[2]
+                    print "removing data for keyID ", keyID, " from table"
+                    ##need the mac address returned
+                    c_handle = ClientTable_Handler()
+                    c_handle.delete_entry(keyID)
                     lines = open(ClientTable).readlines()
                     print lines
                 else:

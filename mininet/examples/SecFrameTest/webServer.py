@@ -43,7 +43,7 @@ import os
 def turnOnWebServer():
     os.system('/etc/init.d/lighttpd start')
 
-def killWebServer():
+def stopWebServer():
     os.system('/etc/init.d/lighttpd stop')
 
 def enableIPForwarding():
@@ -62,10 +62,11 @@ def setWebPage(interface, attackIP):
           '--jump DNAT --to-destination %s' %attackIP)
 
 def killWebServer(attackIP):
-    killWebServer()
     os.system('sudo iptables -t nat -D PREROUTING -p tcp --dport ' \
               '80 -j NETMAP --to %s' %attackIP)
+    print "removing ip tables"
     os.system('iptables --table nat --flush')
+    stopWebServer()
 
 def renderWeb(interface, attackIP):
     turnOnWebServer()
