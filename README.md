@@ -6,4 +6,4 @@ For notes on setup, see the [Wiki](https://github.com/Ryuretic/SecRev/wiki)!
 
 See how this transition framework is being used for [Rogue Access Point (RAP) Security](https://github.com/Ryuretic/RAP/wiki). 
 
-Learn more about [Ryuretic](https://github.com/Ryuretic/RyureticLabs). 
+Learn more about [Ryuretic](https://github.com/Ryuretic/RyureticLabs/wiki). 
